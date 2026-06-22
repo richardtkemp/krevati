@@ -1,7 +1,8 @@
 import logging
+from pathlib import Path
 log = logging.getLogger(__name__)
 
-def get_mtime(file):
+def get_mtime(file: Path) -> int:
     return int(file.stat().st_mtime)
 
 def chunk_text(text: str, chunksize: int, overlap: int) -> list[str]:

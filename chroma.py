@@ -28,7 +28,13 @@ class Chroma:
         self.collection.delete(where={"path": {"$ne": ""}})
         log.warning('Done wiping')
     
-    def upsert_file_to_collection(self, file: Path):
+    def delete_file(self, file: Path):
+        # TODO verify file is in DB?? 
+        log.info(f"Deleting {file} from DB")
+        self.collection.delete(where={"path": {"$eq": str(file)}})
+        log.info('Done deleting')
+    
+    def upsert_file(self, file: Path):
         log.info(f"adding {file}")
         text = file.read_text()
         # need to chunk down to model context size
