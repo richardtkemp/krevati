@@ -1,0 +1,25 @@
+[project]
+name = "embed"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "chromadb>=1.5.9",
+    "fastembed>=0.8.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.410",
+    "pytest>=9.1.1",
+    "pytest-timeout>=2.4.0",
+    "ruff>=0.15.18",
+]
+
+[tool.pytest.ini_options]
+timeout = 1
+filterwarnings = ["ignore::DeprecationWarning:chromadb"]
+
+[tool.ruff.lint]
+ignore = ["E701", "E401"]
