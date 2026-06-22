@@ -1,7 +1,7 @@
-import logging
-from pathlib import Path
-
-from chroma import Chroma
+import logging, signal
+from pathlib    import Path
+from chroma     import Chroma
+from filesystem import Watcher,stopwatching
 
 log = logging.getLogger(__name__)
 
@@ -16,7 +16,12 @@ def main(args):
         c.pretty_print(c.search(args.search))
         return
 
-    update(c, Path('/home/rich/vault'))
+    signal.signal(signal.SIGTERM, lambda x,y: stopwatching.set())
+    logging.getLogger('watchfiles').setLevel(logging.WARNING)
+    w = Watcher(Path('/home/rich/vault'))
+    w.start()
+
+    
 
     ct = c.count()
     log.info(f"DONE - DB count is {ct} chunks")
