@@ -1,60 +1,82 @@
-import logging, signal, socket, os
+import logging, socket, os, time
 from pathlib    import Path
 from chroma     import Chroma
-from filesystem import Watcher,stopwatching
+from config     import Config
+from server     import Webserver, Socketserver
 
 log = logging.getLogger(__name__)
 
-
-def main(args):
-    vaultname= 'vault'
-    vaultpath= Path('/home/rich/vault')
-    socketpath= '/tmp/krevati.sock'
-
-    c = Chroma(vaultname)
-
+def daemon(cfg: Config, args):
+    c = Chroma(cfg.vaultname)
     if args.dangerously_wipe_db:
         c.dangerously_wipe_db()
 
-    if args.search:
-        # TODO give this back to the requesting client!
-        c.pretty_print(c.search(args.search))
-        return
+    full_update(cfg, c)
+    start_watcher(cfg, c)
 
-    full_update(c, vaultpath)
-    signal.signal(signal.SIGTERM, lambda x,y: stopwatching.set())
-    logging.getLogger('watchfiles').setLevel(logging.WARNING)
-    w = Watcher(vaultpath, c.needs_indexing, c.upsert_file, c.delete_file)
+    if cfg.server_enabled:
+        ws = Webserver(cfg, c)
+        ws.start()
+    if cfg.socket_enabled:
+        ss = Socketserver(cfg, c)
+        ss.start()
+
+    while True:
+        # Wait forever, let threads work
+        time.sleep(1)
+
+def start_watcher(cfg: Config, c: Chroma):
+    from filesystem import Watcher
+    w = Watcher(cfg.vaultpath, c.needs_indexing, c.upsert_file, c.delete_file)
     w.start()
 
-    # Delete socket if it exists
-    if os.path.exists(socketpath):
-        os.unlink(socketpath)
+
+def update_one(cfg: Config, file: str):
+    c = Chroma(cfg.vaultname)
+    log.info(f"Will check one file for updating: {file}")
+    if c.needs_indexing(Path(file)):
+        c.upsert_file(Path(''), Path(file))
+
+def main(args):
+    cfg = Config()
+
+    if args.search:
+        search_daemon_send(cfg, args.search)
+        return
+
+    if args.update_one:
+        update_one(cfg, args.update_one)
+        return
+
+    daemon(cfg, args)
+
+
+def search_daemon_send(cfg: Config, query: str) -> str:
+    if not os.path.exists(cfg.socketpath):
+        log.error("Could not connect to nonexistent socket - is the daemon running?")
+        return ''
+
     with socket.socket(socket.AF_UNIX) as s:
-        s.bind(socketpath)
-        s.listen()
-        while True:
-            conn, _ = s.accept()
-            query = conn.recv(1024).decode()
-            conn.sendall(c.pretty_print(c.search(query)).encode())
-            conn.close()
+        s.connect(cfg.socketpath)
+        s.sendall(query.encode())
+        s.shutdown(socket.SHUT_WR)
+        chunks = []
+        while chunk := s.recv(4096):
+            chunks.append(chunk)
+        print(b''.join(chunks).decode())
 
+        return ''
 
-    ct = c.count()
-    log.info(f"DONE - DB count is {ct} chunks")
-
-def full_update(c: Chroma, vaultpath: Path):
-    files = vaultpath.rglob('*.md')
+def full_update(cfg:Config, c: Chroma):
+    files = cfg.vaultpath.rglob('*.md')
     # exclude hidden files, or files in hidden dirs
     files = [f for f in files if not any(
             part.startswith('.') for part in
-            f.relative_to(vaultpath).parts)]
+            f.relative_to(cfg.vaultpath).parts)]
 
-    for file in files[0:12]: # TODO limit for testing
+    for file in files:
         if c.needs_indexing(file):
-            c.upsert_file(file)
-        else:
-            log.debug(f"already present: {file}")
+            c.upsert_file(cfg.vaultpath, file)
 
 if __name__ == '__main__':
     import resource, argparse
@@ -64,6 +86,7 @@ if __name__ == '__main__':
                         help='Delete all indexed data before re-indexing')
     parser.add_argument('--verbose', action='store_true', help='Log verbosely')
     parser.add_argument('--search', help='Search term')
+    parser.add_argument('--update-one', help='Add/update one file in the db')
     args = parser.parse_args()
 
     level = logging.DEBUG if args.verbose else logging.INFO
@@ -80,14 +103,16 @@ if __name__ == '__main__':
 # add delete count get modify/update/upsert query 
 # done!
 # persistent file-watching daemon
+# file type filter
+# search queries to route to the daemon rather than start afresh (threading + server)
 
 # main goals
-# search queries to route to the daemon rather than start afresh (threading + server)
-# file type filter
 # multiple source dirs supported (same db i guess)
 # configurable
+#   file type filter
+#   db backend swappable
 # schema versioning
-# db backend swappable
+# swap from socket to http for local
 
 # stretch goals:
 # preserve db entry on file move (don't delete and recreate)

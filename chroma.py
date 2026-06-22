@@ -1,4 +1,4 @@
-import chromadb, logging
+import chromadb, logging, os, json
 from fastembed import TextEmbedding
 from misc import get_mtime, chunk_text
 from pathlib import Path
@@ -34,7 +34,7 @@ class Chroma:
         self.collection.delete(where={"path": {"$eq": str(file)}})
         log.info('Done deleting')
     
-    def upsert_file(self, file: Path):
+    def upsert_file(self, vaultpath: Path, file: Path):
         log.info(f"adding {file}")
         text = file.read_text()
         # need to chunk down to model context size
@@ -46,7 +46,7 @@ class Chroma:
         # does it already exist?
         old = self.collection.get(where={'path': {'$eq': str(file)}}, include=['metadatas'])
         old_count = len(old['ids'])
-    
+
         # collection.add silently fails if the id already exists
         # so use upsert!
         mtime = get_mtime(file)
@@ -55,7 +55,9 @@ class Chroma:
             documents = chunks,
             metadatas = [{'path': str(file),
                           'chunk': i,
-                          'mtime': mtime}
+                          'mtime': mtime,
+                          'vaultpath': str(vaultpath),
+                          }
                          for i in chunkids],
             ids = [f"{str(file)}::{i}" for i in chunkids]
         )
@@ -65,6 +67,14 @@ class Chroma:
             self.collection.delete(ids=[f"{file}::{i}" for i in range(new_count, old_count)])
     
     def needs_indexing(self, file: Path):
+        if not os.path.exists(file): # doesn't exist
+            log.debug(f"Not indexing nonexistent file {file}")
+            return False
+
+        if file.stat().st_size == 0: # empty
+            log.debug(f"Not indexing empty file {file}")
+            return False
+
         results = self.collection.get(
                 where={"path": {"$eq": str(file)}},
                 include=["metadatas"],
@@ -77,12 +87,37 @@ class Chroma:
         stored_mtime = results['metadatas'][0].get('mtime', 0)
         assert isinstance(stored_mtime, int)
 
-        log.debug(f"stored_mtime={stored_mtime}, file_mtime={get_mtime(file)}")
-        return get_mtime(file) > stored_mtime
+        if not get_mtime(file) > stored_mtime:
+            log.debug(f"Not indexing unchanged file {file}")
+            return False
+
+        return True
     
-    def search(self, term: str, n_results: int = 5): ## TODO magic number
+    def search(self, term: str, n_results: int = 5):
+        log.info(f"Searching for {term}")
         vectors = [v.tolist() for v in self.model.embed([term])]
         return self.collection.query(vectors, n_results = n_results)
+    
+    def json_print(self, result) -> str:
+        hits = zip(
+                result['distances'][0],
+                result['metadatas'][0],
+                result['documents'][0],
+                )
+        output = []
+        for dist, meta, doc in hits:
+            path = meta['path']
+            if path.startswith(meta['vaultpath']):
+                path = str(Path(path).relative_to(meta['vaultpath']))
+
+            output.append({
+                'path': path,
+                'header': '', #TODO extract this? will not always be available
+                'snippet': doc[:100], # TODO store whole thing?
+                'score': round(1-dist,3),
+                })
+
+        return json.dumps(output)
     
     def pretty_print(self, result) -> str:
         hits = zip(
