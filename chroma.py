@@ -84,16 +84,19 @@ class Chroma:
         vectors = [v.tolist() for v in self.model.embed([term])]
         return self.collection.query(vectors, n_results = n_results)
     
-    def pretty_print(self, result):
+    def pretty_print(self, result) -> str:
         hits = zip(
                 result['ids'][0],
                 result['distances'][0],
                 result['metadatas'][0],
                 result['documents'][0],
                 )
+        output = []
         for id_, dist, meta, doc in hits:
-            print(f"\n%%%% DISTANCE {dist:.3f} %%%%\n%%%% PATH {meta['path']} %%%%\n%%%% CHUNK {meta['chunk']} %%%%")
-            print(doc[:200])
+            output.append(f"\n%%%% DISTANCE {dist:.3f} %%%%\n%%%% PATH {meta['path']} %%%%\n%%%% CHUNK {meta['chunk']} %%%%")
+            output.append(doc[:200])
+
+        return '\n'.join(output)
     
     def count(self):
         return self.collection.count()

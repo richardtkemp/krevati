@@ -1,4 +1,4 @@
-import logging, signal #, threading, socket
+import logging, signal, socket, os
 from pathlib    import Path
 from chroma     import Chroma
 from filesystem import Watcher,stopwatching
@@ -9,6 +9,7 @@ log = logging.getLogger(__name__)
 def main(args):
     vaultname= 'vault'
     vaultpath= Path('/home/rich/vault')
+    socketpath= '/tmp/krevati.sock'
 
     c = Chroma(vaultname)
 
@@ -16,6 +17,7 @@ def main(args):
         c.dangerously_wipe_db()
 
     if args.search:
+        # TODO give this back to the requesting client!
         c.pretty_print(c.search(args.search))
         return
 
@@ -25,7 +27,18 @@ def main(args):
     w = Watcher(vaultpath, c.needs_indexing, c.upsert_file, c.delete_file)
     w.start()
 
-    
+    # Delete socket if it exists
+    if os.path.exists(socketpath):
+        os.unlink(socketpath)
+    with socket.socket(socket.AF_UNIX) as s:
+        s.bind(socketpath)
+        s.listen()
+        while True:
+            conn, _ = s.accept()
+            query = conn.recv(1024).decode()
+            conn.sendall(c.pretty_print(c.search(query)).encode())
+            conn.close()
+
 
     ct = c.count()
     log.info(f"DONE - DB count is {ct} chunks")

@@ -1,4 +1,4 @@
-import logging,threading
+import logging, threading
 from watchfiles import watch
 from pathlib import Path
 
@@ -13,7 +13,7 @@ class Watcher:
         self.upserter = upserter 
         self.deleter = deleter
 
-    def start(self):
+    def _watch(self):
         log.info(f"Starting watching dir {str(self.path)}")
         try:
             for changes in watch(self.path, stop_event=stopwatching):
@@ -23,6 +23,9 @@ class Watcher:
                 for path in paths:
                     assert isinstance(path, str)
                     path = Path(path)
+                    if path.suffix != '.md':
+                        log.debug(f"ignoring {path}")
+                        continue
 
                     if not path.exists():
                         log.info(f"deleted from disk: {path}")
@@ -37,3 +40,7 @@ class Watcher:
 
         except KeyboardInterrupt:
             pass
+
+    def start(self):
+        t = threading.Thread(target=self._watch, daemon=True)
+        t.start()
