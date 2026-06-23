@@ -6,8 +6,12 @@ def get_mtime(file: Path) -> int:
     return int(file.stat().st_mtime)
 
 def chunk_text(text: str, chunksize: int, overlap: int) -> list[str]:
+    if chunksize <= overlap:
+        raise ValueError('overlap must be smaller than chunk size')
+
     length = len(text)
     if not length: return []
+
     start, end = 0, 0
     chunks = []
     while start < length:
@@ -16,7 +20,6 @@ def chunk_text(text: str, chunksize: int, overlap: int) -> list[str]:
             boundary = text.find(' ', start, end)
             if boundary != -1 and boundary < start + overlap:
                 start = boundary + 1
-                if start >= length: break
 
         end = start + chunksize
         # if this is not the final chunk
@@ -28,6 +31,10 @@ def chunk_text(text: str, chunksize: int, overlap: int) -> list[str]:
                 end = boundary
         chunks.append(text[start:end])
 
+        # Don't create a new chunk if we reached the end
+        if end >= length:
+            break
+        
         # set next start point back from previous end by overlap chars 
         start = end - overlap
 
