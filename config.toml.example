@@ -1,0 +1,23 @@
+# krevati configuration — copy to ~/.config/krevati/config.toml and edit.
+# All keys below are required; the daemon refuses to start if any are missing.
+
+vault_name      = "vault"
+vault_path      = "/home/user/vault"
+cache_dir       = "/home/user/.cache"
+file_match_glob = "*.md"
+
+socket_path     = "/tmp/krevati.sock"
+server_enabled  = true
+socket_enabled  = true
+host            = "0.0.0.0"
+port            = 5000
+
+# Embedding model
+model_string    = "BAAI/bge-small-en-v1.5"
+model_context   = 512   # max tokens per embedding request
+overlap         = 150   # character overlap between adjacent chunks
+
+# API key for non-local HTTP requests. The KREVATI_API_KEY environment
+# variable overrides this when set. Uncomment and set to allow the file
+# to supply it instead.
+# api_key = "change-me"

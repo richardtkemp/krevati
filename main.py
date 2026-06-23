@@ -1,7 +1,7 @@
 import logging, time, argparse, client
 from chroma     import Chroma
 from db         import Indexer
-from config     import Config
+from config     import Config, ConfigCreated
 from server     import Webserver, Socketserver
 from filesystem import Watcher, full_update
 
@@ -33,7 +33,12 @@ def start_watcher(cfg: Config, idx: Indexer):
 
 
 def main(args):
-    cfg = Config()
+    try:
+        cfg = Config()
+    except ConfigCreated as e:
+        log.warning(f"No config file found — wrote a starter config to {e}. "
+                    f"Edit the values and run again.")
+        return
 
     if args.search:
         print(client.search_daemon_send(cfg, args.search))
@@ -66,12 +71,12 @@ if __name__ == '__main__':
 # added http server as well as local socket
 # configurable
 # schema versioning
+# tests
+# configurable from file
 
 # main goals
 # use http server locally if socket not enabled
 # multiple source dirs supported (same db i guess)
-# tests
-# configurable from file
 
 # stretch goals:
 # db backend swappable
