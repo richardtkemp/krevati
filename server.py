@@ -45,10 +45,10 @@ class Socketserver:
 
     def _serve(self):
         # Delete socket if it exists
-        if os.path.exists(self.cfg.socketpath):
-            os.unlink(self.cfg.socketpath)
+        if os.path.exists(self.cfg.socket_path):
+            os.unlink(self.cfg.socket_path)
         with socket.socket(socket.AF_UNIX) as s:
-            s.bind(self.cfg.socketpath)
+            s.bind(self.cfg.socket_path)
             s.listen()
             while True:
                 conn, _ = s.accept()

@@ -7,7 +7,7 @@ from server     import Webserver, Socketserver
 log = logging.getLogger(__name__)
 
 def daemon(cfg: Config, args):
-    c = Chroma(cfg.vaultname)
+    c = Chroma(cfg.vault_name)
     if args.dangerously_wipe_db:
         c.dangerously_wipe_db()
 
@@ -27,12 +27,12 @@ def daemon(cfg: Config, args):
 
 def start_watcher(cfg: Config, c: Chroma):
     from filesystem import Watcher
-    w = Watcher(cfg.vaultpath, c.needs_indexing, c.upsert_file, c.delete_file)
+    w = Watcher(cfg.vault_path, c.needs_indexing, c.upsert_file, c.delete_file)
     w.start()
 
 
 def update_one(cfg: Config, file: str):
-    c = Chroma(cfg.vaultname)
+    c = Chroma(cfg.vault_name)
     log.info(f"Will check one file for updating: {file}")
     if c.needs_indexing(Path(file)):
         c.upsert_file(Path(''), Path(file))
@@ -52,12 +52,12 @@ def main(args):
 
 
 def search_daemon_send(cfg: Config, query: str) -> str:
-    if not os.path.exists(cfg.socketpath):
+    if not os.path.exists(cfg.socket_path):
         log.error("Could not connect to nonexistent socket - is the daemon running?")
         return ''
 
     with socket.socket(socket.AF_UNIX) as s:
-        s.connect(cfg.socketpath)
+        s.connect(cfg.socket_path)
         s.sendall(query.encode())
         s.shutdown(socket.SHUT_WR)
         chunks = []
@@ -68,15 +68,15 @@ def search_daemon_send(cfg: Config, query: str) -> str:
         return ''
 
 def full_update(cfg:Config, c: Chroma):
-    files = cfg.vaultpath.rglob('*.md')
+    files = cfg.vault_path.rglob(cfg.file_match_glob)
     # exclude hidden files, or files in hidden dirs
     files = [f for f in files if not any(
             part.startswith('.') for part in
-            f.relative_to(cfg.vaultpath).parts)]
+            f.relative_to(cfg.vault_path).parts)]
 
     for file in files:
         if c.needs_indexing(file):
-            c.upsert_file(cfg.vaultpath, file)
+            c.upsert_file(cfg.vault_path, file)
 
 if __name__ == '__main__':
     import resource, argparse
@@ -105,16 +105,18 @@ if __name__ == '__main__':
 # persistent file-watching daemon
 # file type filter
 # search queries to route to the daemon rather than start afresh (threading + server)
+# added http server as well as local socket
+# configurable
 
 # main goals
+# use http server locally if socket not enabled
 # multiple source dirs supported (same db i guess)
 # configurable
 #   file type filter
-#   db backend swappable
 # schema versioning
-# swap from socket to http for local
 
 # stretch goals:
+# db backend swappable
 # preserve db entry on file move (don't delete and recreate)
 # try both threading and asyncio
 # try http server (what does obsidian/others actually want to use?)

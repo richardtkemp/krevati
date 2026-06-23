@@ -2,9 +2,10 @@ import os
 from pathlib    import Path
 
 class Config:
-    vaultname       = 'vault'
-    vaultpath       = Path('/home/rich/vault')
-    socketpath      = '/tmp/krevati.sock'
+    vault_name       = 'vault'
+    vault_path       = Path('/home/rich/vault')
+    file_match_glob = '*.md'
+    socket_path      = '/tmp/krevati.sock'
     server_enabled  = True
     socket_enabled  = True
     host            = '0.0.0.0'

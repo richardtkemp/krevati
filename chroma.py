@@ -8,18 +8,19 @@ log = logging.getLogger(__name__)
 class Chroma:
 
     # model details
-    modelstring = 'BAAI/bge-small-en-v1.5'
-    modelcontext = 512 # tokens max
-    chunksize = modelcontext * 3 # roughly 4 chars per token, with headroom
-    overlap = 150
+    modelstring     = 'BAAI/bge-small-en-v1.5'
+    modelcontext    = 512 # tokens max
+    chunksize       = modelcontext * 3 # roughly 4 chars per token, with headroom
+    overlap         = 150
+    schema_version  = 1
 
-    def __init__(self, vaultname: str):
+    def __init__(self, vault_name: str):
         # where we will store chroma's database
-        cache_dir = Path.home() / f".cache/chromadb-{vaultname}"
+        cache_dir = Path.home() / f".cache/chromadb-{vault_name}"
         cache_dir.mkdir(parents=True, exist_ok=True)
         
         self.client = chromadb.PersistentClient(path=str(cache_dir))
-        self.collection = self.client.get_or_create_collection(vaultname)
+        self.collection = self.client.get_or_create_collection(vault_name)
         self.model = TextEmbedding(self.modelstring)
     
     # TODO how to handle wiping when multiple dirs are indexed?
@@ -34,7 +35,7 @@ class Chroma:
         self.collection.delete(where={"path": {"$eq": str(file)}})
         log.info('Done deleting')
     
-    def upsert_file(self, vaultpath: Path, file: Path):
+    def upsert_file(self, vault_path: Path, file: Path):
         log.info(f"adding {file}")
         text = file.read_text()
         # need to chunk down to model context size
@@ -53,10 +54,11 @@ class Chroma:
         self.collection.upsert(
             embeddings = vectors,
             documents = chunks,
-            metadatas = [{'path': str(file),
-                          'chunk': i,
-                          'mtime': mtime,
-                          'vaultpath': str(vaultpath),
+            metadatas = [{'path'            : str(file),
+                          'chunk'           : i,
+                          'mtime'           : mtime,
+                          'vault_path'      : str(vault_path),
+                          'schema_version'  : self.schema_version,
                           }
                          for i in chunkids],
             ids = [f"{str(file)}::{i}" for i in chunkids]
@@ -87,11 +89,18 @@ class Chroma:
         stored_mtime = results['metadatas'][0].get('mtime', 0)
         assert isinstance(stored_mtime, int)
 
-        if not get_mtime(file) > stored_mtime:
+        if get_mtime(file) > stored_mtime:
             log.debug(f"Not indexing unchanged file {file}")
-            return False
+            return True
 
-        return True
+        stored_ver = results['metadatas'][0].get('schema_version', 0)
+        assert isinstance(stored_ver, int)
+        if stored_ver < self.schema_version: 
+            # TODO might need to do some extra to wipe out old schema keys,
+            # if any are ever removed!
+            return True
+
+        return False
     
     def search(self, term: str, n_results: int = 5):
         log.info(f"Searching for {term}")
@@ -107,8 +116,8 @@ class Chroma:
         output = []
         for dist, meta, doc in hits:
             path = meta['path']
-            if path.startswith(meta['vaultpath']):
-                path = str(Path(path).relative_to(meta['vaultpath']))
+            if path.startswith(meta['vault_path']):
+                path = str(Path(path).relative_to(meta['vault_path']))
 
             output.append({
                 'path': path,
