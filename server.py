@@ -1,7 +1,9 @@
-import socket, os, threading
+import socket, os, threading, json
 from flask      import Flask, request
 from chroma     import Chroma
 from config     import Config
+from dataclasses import asdict
+#from db         import SearchResult
 
 class Webserver:
     def start(self):
@@ -23,13 +25,18 @@ class Webserver:
         
         @self.app.route('/search', methods=["POST"])
         def search():
-            query = request.args.get('query', '')
+            data = request.get_json(silent=True) or {}
+            query = data.get('query', '')
+            limit = data.get('limit', '5')
             try:
-                limit = int(request.args.get('limit', 5))
+                assert isinstance(limit, int)
             except ValueError:
                 return '{"error": "limit must be an int"}', 400
+
+            if query == '':
+                return '{"error": "query param must be set in request body"}', 400
             
-            return self.c.json_print(self.c.search(query, n_results=limit))
+            return json.dumps([asdict(j) for j in self.c.search(query, n_results=limit)])
     
     def _serve(self):
         self.app.run(host=self.cfg.host, port=self.cfg.port)
@@ -53,7 +60,14 @@ class Socketserver:
             while True:
                 conn, _ = s.accept()
                 query = conn.recv(1024).decode()
-                conn.sendall(self.c.pretty_print(self.c.search(query)).encode())
+                conn.sendall(self.pretty_print(self.c.search(query)).encode())
                 conn.shutdown(socket.SHUT_WR)
                 conn.close()
     
+    def pretty_print(self, result) -> str:
+        output = []
+        for r in result:
+            output.append(f"\n%%%% SCORE {r.score:.3f} %%%%\n%%%% PATH {r.path} %%%%\n%%%% HEADER {r.header} %%%%")
+            output.append(r.snippet[:200])
+
+        return '\n'.join(output)

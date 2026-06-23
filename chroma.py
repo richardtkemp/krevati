@@ -1,8 +1,9 @@
-import chromadb, logging, os, json
+import chromadb, logging, os
 from fastembed import TextEmbedding
 from misc import get_mtime, chunk_text
 from pathlib import Path
 from config import Config
+from db import SearchResult
 
 log = logging.getLogger(__name__)
 
@@ -116,45 +117,40 @@ class Chroma:
 
         return False
     
-    def search(self, term: str, n_results: int = 5):
+    def _records(self, qr):
+        ids = qr['ids'][0]
+        di  = qr['distances'][0]
+        me  = qr['metadatas'][0]
+        do  = qr['documents'][0]
+        assert ids is not None and di is not None and me is not None and do is not None
+        return zip(ids, di, me, do)
+
+    def search(self, term: str, n_results: int = 5) -> list[SearchResult]:
         log.info(f"Searching for {term}")
         vectors = [v.tolist() for v in self.model.embed([term])]
-        return self.collection.query(vectors, n_results = n_results)
-    
-    def json_print(self, result) -> str:
-        hits = zip(
-                result['distances'][0],
-                result['metadatas'][0],
-                result['documents'][0],
-                )
+        query_result = self.collection.query(vectors, n_results = n_results)
+
         output = []
-        for dist, meta, doc in hits:
-            path = meta['path']
-            if path.startswith(meta['vault_path']):
-                path = str(Path(path).relative_to(meta['vault_path']))
+        for _, dist, meta, doc in self._records(query_result):
+            p  = meta['path']
+            vp = meta['vault_path']
+            assert isinstance(p, str) and isinstance(vp, str)
 
-            output.append({
-                'path': path,
-                'header': '', #TODO extract this? will not always be available
-                'snippet': doc[:100], # TODO store whole thing?
-                'score': round(1-dist,3),
-                })
+            # Store absolute paths, return relative paths
+            # TODO maybe just *store relative paths* since
+            # we also store the vault_path anyway
+            if p.startswith(vp):
+                p = str(Path(p).relative_to(vp))
 
-        return json.dumps(output)
+            output.append(SearchResult(
+                p,
+                round(1-dist,3),
+                '', #TODO extract this? will not always be available
+                doc[:100], # TODO return whole thing?
+                ))
+
+        return output
     
-    def pretty_print(self, result) -> str:
-        hits = zip(
-                result['ids'][0],
-                result['distances'][0],
-                result['metadatas'][0],
-                result['documents'][0],
-                )
-        output = []
-        for id_, dist, meta, doc in hits:
-            output.append(f"\n%%%% DISTANCE {dist:.3f} %%%%\n%%%% PATH {meta['path']} %%%%\n%%%% CHUNK {meta['chunk']} %%%%")
-            output.append(doc[:200])
-
-        return '\n'.join(output)
     
     def count(self):
         return self.collection.count()
