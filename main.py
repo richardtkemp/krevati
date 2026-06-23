@@ -3,6 +3,7 @@ from pathlib    import Path
 from chroma     import Chroma
 from config     import Config
 from server     import Webserver, Socketserver
+from filesystem import Watcher
 
 log = logging.getLogger(__name__)
 
@@ -26,26 +27,15 @@ def daemon(cfg: Config, args):
         time.sleep(1)
 
 def start_watcher(cfg: Config, c: Chroma):
-    from filesystem import Watcher
-    w = Watcher(cfg.vault_path, c.needs_indexing, c.upsert_file, c.delete_file)
+    w = Watcher(cfg, c.needs_indexing, c.upsert_file, c.delete_file)
     w.start()
 
-
-def update_one(cfg: Config, file: str):
-    c = Chroma(cfg.vault_name)
-    log.info(f"Will check one file for updating: {file}")
-    if c.needs_indexing(Path(file)):
-        c.upsert_file(Path(''), Path(file))
 
 def main(args):
     cfg = Config()
 
     if args.search:
         search_daemon_send(cfg, args.search)
-        return
-
-    if args.update_one:
-        update_one(cfg, args.update_one)
         return
 
     daemon(cfg, args)
@@ -86,7 +76,6 @@ if __name__ == '__main__':
                         help='Delete all indexed data before re-indexing')
     parser.add_argument('--verbose', action='store_true', help='Log verbosely')
     parser.add_argument('--search', help='Search term')
-    parser.add_argument('--update-one', help='Add/update one file in the db')
     args = parser.parse_args()
 
     level = logging.DEBUG if args.verbose else logging.INFO
@@ -119,4 +108,3 @@ if __name__ == '__main__':
 # db backend swappable
 # preserve db entry on file move (don't delete and recreate)
 # try both threading and asyncio
-# try http server (what does obsidian/others actually want to use?)

@@ -1,13 +1,15 @@
 import logging, threading
 from watchfiles import watch
 from pathlib import Path
+from config import Config
 
 log = logging.getLogger(__name__)
 
 class Watcher:
 
-    def __init__(self, path: Path, changechecker, upserter, deleter):
-        self.path = path
+    def __init__(self, cfg:Config, changechecker, upserter, deleter):
+        self.cfg = cfg
+        self.path = cfg.vault_path
         self.changechecker = changechecker
         self.upserter = upserter 
         self.deleter = deleter
@@ -22,7 +24,7 @@ class Watcher:
             for path in paths:
                 assert isinstance(path, str)
                 path = Path(path)
-                if path.suffix != '.md':
+                if path.suffix != self.cfg.file_match_glob:
                     log.debug(f"ignoring {path}")
                     continue
 
