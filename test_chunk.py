@@ -183,3 +183,42 @@ def test_no_space_in_slice_falls_back_to_hard_cut():
     chunks = chunk_text(text, chunk_size, 0)
     assert all(len(c) <= chunk_size for c in chunks)
     assert ''.join(chunks) == text   # no content lost
+
+
+# ── Overlap-vs-chunksize guard (finding #1) ─────────────────────────────────
+# Progress each iteration is `chunksize - overlap` chars. If overlap >= chunksize
+# that is <= 0, so `start` never advances and the loop spins forever. chunk_text
+# should reject this up front rather than hang. Both tests are RED until a guard
+# (e.g. `if overlap >= chunksize: raise ValueError`) is added — they currently
+# hit the timeout instead of raising.
+
+@pytest.mark.timeout(2)
+def test_overlap_equal_to_chunksize_raises():
+    with pytest.raises(ValueError):
+        chunk_text('a' * 300, 50, 50)
+
+@pytest.mark.timeout(2)
+def test_overlap_greater_than_chunksize_raises():
+    with pytest.raises(ValueError):
+        chunk_text('a' * 300, 50, 80)
+
+
+# ── No redundant duplicate tail chunk (finding #2) ──────────────────────────
+
+def test_no_chunk_is_wholly_inside_the_previous_one():
+    # For certain lengths the loop emits a final chunk whose span is entirely
+    # contained in the previous chunk — pure duplicate content, no new coverage.
+    # With chunksize=100, overlap=20, length=170 the chunks span [0:100], [80:170],
+    # [160:170]; the last is wholly inside the second. Distinct characters (no
+    # spaces, so no boundary snapping) let text.index locate each chunk's position.
+    # RED until chunk_text stops emitting a chunk that adds no new content.
+    text = ''.join(chr(33 + i) for i in range(170))  # 170 distinct non-space chars
+    chunks = chunk_text(text, 100, 20)
+
+    positions = [text.index(c) for c in chunks]
+    ends = [p + len(c) for p, c in zip(positions, chunks)]
+    for i in range(1, len(chunks)):
+        assert ends[i] > ends[i - 1], (
+            f"chunk[{i}] ends at {ends[i]} but chunk[{i-1}] already reached "
+            f"{ends[i-1]} — it adds no new content (redundant duplicate tail)"
+        )

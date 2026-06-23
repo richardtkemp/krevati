@@ -11,7 +11,12 @@ class Chroma:
 
     def __init__(self, cfg: Config, vault_name: str):
         # Chunks of roughly 4 chars per token, with headroom
-        self._chunking = (cfg.model_context * 3, cfg.overlap)
+        cs = cfg.model_context * 3
+        o = cfg.overlap
+        if cs <= o:
+            raise ValueError('overlap must be smaller than chunk size')
+
+        self._chunking = (cs, o)
         # where we will store chroma's database
         cache_dir = Path.home() / f".cache/chromadb-{vault_name}"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -99,7 +104,6 @@ class Chroma:
 
         # Chunking changed
         stored_chunking = results['metadatas'][0].get('chunking', '')
-        assert isinstance(stored_ver, str)
         if stored_chunking != str(self._chunking):
             return True
         

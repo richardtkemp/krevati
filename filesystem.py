@@ -1,7 +1,8 @@
-import logging, threading
+import logging, threading, os, psutil
 from watchfiles import watch
 from pathlib import Path
 from config import Config
+from chroma import Chroma
 
 log = logging.getLogger(__name__)
 
@@ -48,3 +49,27 @@ class Watcher:
     def start(self):
         t = threading.Thread(target=self._watch, daemon=True)
         t.start()
+
+def full_update(cfg:Config, c: Chroma):
+    # Be nice while doing long-running work
+    os.nice(10)
+    p = psutil.Process()
+    p.ionice(psutil.IOPRIO_CLASS_IDLE)
+
+    files = cfg.vault_path.rglob(cfg.file_match_glob)
+    # exclude hidden files, or files in hidden dirs
+    files = [f for f in files if not any(
+            part.startswith('.') for part in
+            f.relative_to(cfg.vault_path).parts)]
+
+    for file in files:
+        try:
+            if c.needs_indexing(file):
+                c.upsert_file(cfg.vault_path, file)
+        except Exception:
+            log.exception(f"Error indexing {file}")
+
+    # Be responsive when watching and serving queries
+    os.nice(0)
+    p.ionice(psutil.IOPRIO_CLASS_BE)
+
