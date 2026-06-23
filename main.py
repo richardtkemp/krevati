@@ -1,5 +1,6 @@
-import logging, socket, os, time, argparse
+import logging, time, argparse, client
 from chroma     import Chroma
+from db         import Indexer
 from config     import Config
 from server     import Webserver, Socketserver
 from filesystem import Watcher, full_update
@@ -25,8 +26,8 @@ def daemon(cfg: Config, args):
         # Wait forever, let threads work
         time.sleep(1)
 
-def start_watcher(cfg: Config, c: Chroma):
-    w = Watcher(cfg, c.needs_indexing, c.upsert_file, c.delete_file)
+def start_watcher(cfg: Config, idx: Indexer):
+    w = Watcher(cfg, idx.needs_indexing, idx.upsert_file, idx.delete_file)
     w.start()
 
 
@@ -34,27 +35,11 @@ def main(args):
     cfg = Config()
 
     if args.search:
-        search_daemon_send(cfg, args.search)
+        client.search_daemon_send(cfg, args.search)
         return
 
     daemon(cfg, args)
 
-
-def search_daemon_send(cfg: Config, query: str) -> str:
-    if not os.path.exists(cfg.socket_path):
-        log.error("Could not connect to nonexistent socket - is the daemon running?")
-        return ''
-
-    with socket.socket(socket.AF_UNIX) as s:
-        s.connect(cfg.socket_path)
-        s.sendall(query.encode())
-        s.shutdown(socket.SHUT_WR)
-        chunks = []
-        while chunk := s.recv(4096):
-            chunks.append(chunk)
-        print(b''.join(chunks).decode())
-
-        return ''
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Index directory into the DB for semantic search")
@@ -85,6 +70,7 @@ if __name__ == '__main__':
 # use http server locally if socket not enabled
 # multiple source dirs supported (same db i guess)
 # tests
+# configurable from file
 
 # stretch goals:
 # db backend swappable

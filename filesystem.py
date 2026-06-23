@@ -1,8 +1,8 @@
-import logging, threading, os, psutil
+import logging, threading, psutil
 from watchfiles import watch
 from pathlib import Path
 from config import Config
-from chroma import Chroma
+from db import Indexer
 
 log = logging.getLogger(__name__)
 
@@ -50,9 +50,8 @@ class Watcher:
         t = threading.Thread(target=self._watch, daemon=True)
         t.start()
 
-def full_update(cfg:Config, c: Chroma):
+def full_update(cfg:Config, idx: Indexer):
     # Be nice while doing long-running work
-    os.nice(10)
     p = psutil.Process()
     p.ionice(psutil.IOPRIO_CLASS_IDLE)
 
@@ -64,12 +63,11 @@ def full_update(cfg:Config, c: Chroma):
 
     for file in files:
         try:
-            if c.needs_indexing(file):
-                c.upsert_file(cfg.vault_path, file)
+            if idx.needs_indexing(file):
+                idx.upsert_file(cfg.vault_path, file)
         except Exception:
             log.exception(f"Error indexing {file}")
 
     # Be responsive when watching and serving queries
-    os.nice(0)
     p.ionice(psutil.IOPRIO_CLASS_BE)
 

@@ -1,18 +1,17 @@
 import socket, os, threading, json
 from flask      import Flask, request
-from chroma     import Chroma
 from config     import Config
 from dataclasses import asdict
-#from db         import SearchResult
+from db         import Searcher
 
 class Webserver:
     def start(self):
         t = threading.Thread(target=self._serve, daemon=True)
         t.start()
 
-    def __init__(self, cfg: Config, c: Chroma):
+    def __init__(self, cfg: Config, s: Searcher):
         self.cfg = cfg
-        self.c = c
+        self.s = s
         self.app = Flask(__name__)
     
         @self.app.before_request
@@ -36,7 +35,7 @@ class Webserver:
             if query == '':
                 return '{"error": "query param must be set in request body"}', 400
             
-            return json.dumps([asdict(j) for j in self.c.search(query, n_results=limit)])
+            return json.dumps([asdict(j) for j in self.s.search(query, n_results=limit)])
     
     def _serve(self):
         self.app.run(host=self.cfg.host, port=self.cfg.port)
@@ -46,21 +45,21 @@ class Socketserver:
         t = threading.Thread(target=self._serve, daemon=True)
         t.start()
 
-    def __init__(self, cfg: Config, c: Chroma):
+    def __init__(self, cfg: Config, s: Searcher):
         self.cfg = cfg
-        self.c = c
+        self.s = s
 
     def _serve(self):
         # Delete socket if it exists
         if os.path.exists(self.cfg.socket_path):
             os.unlink(self.cfg.socket_path)
-        with socket.socket(socket.AF_UNIX) as s:
-            s.bind(self.cfg.socket_path)
-            s.listen()
+        with socket.socket(socket.AF_UNIX) as sock:
+            sock.bind(self.cfg.socket_path)
+            sock.listen()
             while True:
-                conn, _ = s.accept()
+                conn, _ = sock.accept()
                 query = conn.recv(1024).decode()
-                conn.sendall(self.pretty_print(self.c.search(query)).encode())
+                conn.sendall(self.pretty_print(self.s.search(query)).encode())
                 conn.shutdown(socket.SHUT_WR)
                 conn.close()
     
