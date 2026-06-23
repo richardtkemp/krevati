@@ -1,4 +1,4 @@
-import logging, socket, os, time
+import logging, socket, os, time, argparse
 from pathlib    import Path
 from chroma     import Chroma
 from config     import Config
@@ -69,8 +69,6 @@ def full_update(cfg:Config, c: Chroma):
             c.upsert_file(cfg.vault_path, file)
 
 if __name__ == '__main__':
-    import resource, argparse
-
     parser = argparse.ArgumentParser(description="Index directory into the DB for semantic search")
     parser.add_argument('--dangerously-wipe-db', action='store_true',
                         help='Delete all indexed data before re-indexing')
@@ -80,9 +78,6 @@ if __name__ == '__main__':
 
     level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(level=level)
-
-    resource.setrlimit(resource.RLIMIT_AS, (8 * 1024**3, 8 * 1024**3))  # 8GB virtual memory cap
-    resource.setrlimit(resource.RLIMIT_CPU, (600, 600))  # 60s CPU time cap TODO
 
     main(args)
 
