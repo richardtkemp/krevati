@@ -26,10 +26,8 @@ class Webserver:
         def search():
             data = request.get_json(silent=True) or {}
             query = data.get('query', '')
-            limit = data.get('limit', '5')
-            try:
-                assert isinstance(limit, int)
-            except ValueError:
+            limit = data.get('limit', 5)
+            if not isinstance(limit, int):
                 return '{"error": "limit must be an int"}', 400
 
             if query == '':

@@ -4,6 +4,7 @@ from pathlib    import Path
 class Config:
     vault_name      = 'vault'
     vault_path      = Path('/home/rich/vault')
+    cache_dir       = Path.home() / ".cache"
     file_match_glob = '*.md'
     socket_path     = '/tmp/krevati.sock'
     server_enabled  = True

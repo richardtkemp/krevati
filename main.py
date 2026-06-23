@@ -8,7 +8,8 @@ from filesystem import Watcher, full_update
 log = logging.getLogger(__name__)
 
 def daemon(cfg: Config, args):
-    c = Chroma(cfg, cfg.vault_name)
+    c = Chroma(cfg)
+
     if args.dangerously_wipe_db:
         c.dangerously_wipe_db()
 
@@ -35,7 +36,7 @@ def main(args):
     cfg = Config()
 
     if args.search:
-        client.search_daemon_send(cfg, args.search)
+        print(client.search_daemon_send(cfg, args.search))
         return
 
     daemon(cfg, args)
