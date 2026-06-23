@@ -2,26 +2,23 @@ import chromadb, logging, os, json
 from fastembed import TextEmbedding
 from misc import get_mtime, chunk_text
 from pathlib import Path
+from config import Config
 
 log = logging.getLogger(__name__)
 
 class Chroma:
+    schema_version = 2
 
-    # model details
-    modelstring     = 'BAAI/bge-small-en-v1.5'
-    modelcontext    = 512 # tokens max
-    chunksize       = modelcontext * 3 # roughly 4 chars per token, with headroom
-    overlap         = 150
-    schema_version  = 1
-
-    def __init__(self, vault_name: str):
+    def __init__(self, cfg: Config, vault_name: str):
+        # Chunks of roughly 4 chars per token, with headroom
+        self._chunking = (cfg.model_context * 3, cfg.overlap)
         # where we will store chroma's database
         cache_dir = Path.home() / f".cache/chromadb-{vault_name}"
         cache_dir.mkdir(parents=True, exist_ok=True)
         
         self.client = chromadb.PersistentClient(path=str(cache_dir))
         self.collection = self.client.get_or_create_collection(vault_name)
-        self.model = TextEmbedding(self.modelstring)
+        self.model = TextEmbedding(cfg.model_string)
     
     # TODO how to handle wiping when multiple dirs are indexed?
     def dangerously_wipe_db(self):
@@ -39,7 +36,8 @@ class Chroma:
         log.info(f"adding {file}")
         text = file.read_text()
         # need to chunk down to model context size
-        chunks = chunk_text(text, self.chunksize, self.overlap)
+        chunks = chunk_text(text, self._chunking[0], self._chunking[1])
+
         new_count = len(chunks)
         chunkids = range(new_count)
         vectors = [v.tolist() for v in self.model.embed(chunks)] # batch all chunks in one call
@@ -56,6 +54,7 @@ class Chroma:
             documents = chunks,
             metadatas = [{'path'            : str(file),
                           'chunk'           : i,
+                          'chunking'        : str(self._chunking),
                           'mtime'           : mtime,
                           'vault_path'      : str(vault_path),
                           'schema_version'  : self.schema_version,
@@ -69,10 +68,12 @@ class Chroma:
             self.collection.delete(ids=[f"{file}::{i}" for i in range(new_count, old_count)])
     
     def needs_indexing(self, file: Path):
-        if not os.path.exists(file): # doesn't exist
+        # File doesn't exist
+        if not os.path.exists(file):
             log.debug(f"Not indexing nonexistent file {file}")
             return False
 
+        # File is empty
         if file.stat().st_size == 0: # empty
             log.debug(f"Not indexing empty file {file}")
             return False
@@ -82,22 +83,31 @@ class Chroma:
                 include=["metadatas"],
                 limit=1)
     
+        # File not yet indexed
         if not results['ids']:
-            return True # not indexed yet
+            return True
     
         assert results['metadatas'] is not None
-        stored_mtime = results['metadatas'][0].get('mtime', 0)
-        assert isinstance(stored_mtime, int)
 
-        if get_mtime(file) > stored_mtime:
-            log.debug(f"Not indexing unchanged file {file}")
-            return True
-
+        # Schema version changed
         stored_ver = results['metadatas'][0].get('schema_version', 0)
         assert isinstance(stored_ver, int)
         if stored_ver < self.schema_version: 
             # TODO might need to do some extra to wipe out old schema keys,
             # if any are ever removed!
+            return True
+
+        # Chunking changed
+        stored_chunking = results['metadatas'][0].get('chunking', '')
+        assert isinstance(stored_ver, str)
+        if stored_chunking != str(self._chunking):
+            return True
+        
+        # File changed
+        stored_mtime = results['metadatas'][0].get('mtime', 0)
+        assert isinstance(stored_mtime, int)
+        if get_mtime(file) > stored_mtime:
+            log.debug(f"Not indexing unchanged file {file}")
             return True
 
         return False

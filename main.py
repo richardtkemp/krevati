@@ -1,5 +1,4 @@
 import logging, socket, os, time, argparse
-from pathlib    import Path
 from chroma     import Chroma
 from config     import Config
 from server     import Webserver, Socketserver
@@ -8,7 +7,7 @@ from filesystem import Watcher
 log = logging.getLogger(__name__)
 
 def daemon(cfg: Config, args):
-    c = Chroma(cfg.vault_name)
+    c = Chroma(cfg, cfg.vault_name)
     if args.dangerously_wipe_db:
         c.dangerously_wipe_db()
 
@@ -91,13 +90,12 @@ if __name__ == '__main__':
 # search queries to route to the daemon rather than start afresh (threading + server)
 # added http server as well as local socket
 # configurable
+# schema versioning
 
 # main goals
 # use http server locally if socket not enabled
 # multiple source dirs supported (same db i guess)
-# configurable
-#   file type filter
-# schema versioning
+# tests
 
 # stretch goals:
 # db backend swappable
