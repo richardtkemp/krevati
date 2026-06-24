@@ -11,12 +11,16 @@ class Model:
     # Once loaded, preserve model across instantiations with a class variable
     model = None
 
-    def __init__(self, model_string: str) -> None:
+    def __init__(self, model_string: str, threads: int) -> None:
         self.model_string = model_string
+        # 0 means "auto": all usable cores but one, at least one. Otherwise use as
+        # given. process_cpu_count() respects CPU affinity (taskset/cpuset).
+        self.threads = threads or max(1, (os.process_cpu_count() or 1) - 1)
 
     def embed(self, chunks: list[str]):
         if not Model.model:
-            Model.model = TextEmbedding(self.model_string)
+            # threads caps ONNX Runtime's intra-op thread pool
+            Model.model = TextEmbedding(self.model_string, threads=self.threads)
         return Model.model.embed(chunks)
  
 class Chroma:
@@ -37,7 +41,7 @@ class Chroma:
         self.client = chromadb.PersistentClient(path=str(cache_dir))
         self.collection = self.client.get_or_create_collection(cfg.vault_name)
 
-        self.model = Model(cfg.model_string)
+        self.model = Model(cfg.model_string, cfg.model_threads)
     
     # TODO how to handle wiping when multiple dirs are indexed?
     def dangerously_wipe_db(self) -> None:

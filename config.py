@@ -29,6 +29,7 @@ class Config:
     port            : int
     model_string    : str
     model_context   : int
+    model_threads   : int
     overlap         : int
     API_KEY         : str
 

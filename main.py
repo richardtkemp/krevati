@@ -71,11 +71,11 @@ if __name__ == '__main__':
 # schema versioning
 # tests
 # configurable from file
+# limit num threads used by chroma/fastembed
 
 # main goals
 # use http server locally if socket not enabled
 # multiple source dirs supported (same db i guess)
-# limit num threads used by chroma/fastembed
 
 # stretch goals:
 # db backend swappable

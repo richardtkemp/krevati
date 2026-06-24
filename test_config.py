@@ -23,6 +23,7 @@ host = "0.0.0.0"
 port = 5000
 model_string = "BAAI/bge-small-en-v1.5"
 model_context = 512
+model_threads = 4
 overlap = 150
 """
 

@@ -20,6 +20,7 @@ port            = 5000
 # Embedding model
 model_string    = "BAAI/bge-small-en-v1.5"
 model_context   = 512   # max tokens per embedding request
+model_threads   = 0     # cap on ONNX Runtime threads; 0 = auto (all cores but one)
 overlap         = 150   # character overlap between adjacent chunks
 
 # API key for non-local HTTP requests. The KREVATI_API_KEY environment
