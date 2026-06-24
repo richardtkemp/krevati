@@ -28,7 +28,7 @@ def daemon(cfg: Config, args):
         time.sleep(1)
 
 def start_watcher(cfg: Config, idx: Indexer):
-    w = Watcher(cfg, idx.needs_indexing, idx.upsert_file, idx.delete_file)
+    w = Watcher(cfg, idx)
     w.start()
 
 
@@ -77,6 +77,7 @@ if __name__ == '__main__':
 # main goals
 # use http server locally if socket not enabled
 # multiple source dirs supported (same db i guess)
+# limit num threads used by chroma/fastembed
 
 # stretch goals:
 # db backend swappable

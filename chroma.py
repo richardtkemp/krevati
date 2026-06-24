@@ -20,7 +20,7 @@ class Model:
         return Model.model.embed(chunks)
  
 class Chroma:
-    _schema_version = 2
+    _schema_version = 3
 
     def __init__(self, cfg: Config):
         # Chunks of roughly 4 chars per token, with headroom
@@ -51,15 +51,16 @@ class Chroma:
         self.collection.delete(where={"path": {"$eq": str(file)}})
         log.info('Done deleting')
     
-    def upsert_file(self, vault_path: Path, file: Path) -> None:
-        log.info(f"adding {file}")
-        text = file.read_text()
+    def upsert_file(self, vault_path: Path, relative_path: Path) -> None:
+        log.info(f"adding {relative_path}")
+        full_path = vault_path / relative_path
+        text = full_path.read_text()
         # need to chunk down to model context size
         chunks = chunk_text(text, self._chunking[0], self._chunking[1])
         if not chunks:
             # No content to embed (e.g. empty/whitespace file). chromadb rejects an
             # empty embeddings list, so never call upsert with nothing.
-            log.debug(f"No chunks for {file}, skipping upsert")
+            log.debug(f"No chunks for {relative_path}, skipping upsert")
             return
 
         new_count = len(chunks)
@@ -67,29 +68,34 @@ class Chroma:
         vectors = [v.tolist() for v in self.model.embed(chunks)] # batch all chunks in one call
     
         # does it already exist?
-        old = self.collection.get(where={'path': {'$eq': str(file)}}, include=['metadatas'])
+        old = self.collection.get(where={'$and': [
+            {'relative_path':   {'$eq': str(relative_path)}},
+            {'full_path':       {'$eq': str(full_path)}}]},
+            include=['metadatas'])
         old_count = len(old['ids'])
 
         # collection.add silently fails if the id already exists
         # so use upsert!
-        mtime = get_mtime(file)
+        # NB it does a full *replace* of embedding, document text, and metadata
+        mtime = get_mtime(full_path)
         self.collection.upsert(
             embeddings = vectors,
             documents = chunks,
-            metadatas = [{'path'            : str(file),
+            metadatas = [{'relative_path'   : str(relative_path),
+                          'vault_path'      : str(vault_path),
                           'chunk'           : i,
                           'chunking'        : str(self._chunking),
                           'mtime'           : mtime,
-                          'vault_path'      : str(vault_path),
                           'schema_version'  : self._schema_version,
                           }
                          for i in chunkids],
-            ids = [f"{str(file)}::{i}" for i in chunkids]
+            ids = [f"{str(full_path)}::{i}" for i in chunkids]
         )
     
+
         # delete any surplus chunks if upsert short over long
         if new_count < old_count:
-            self.collection.delete(ids=[f"{file}::{i}" for i in range(new_count, old_count)])
+            self.collection.delete(ids=[f"{full_path}::{i}" for i in range(new_count, old_count)])
     
     def needs_indexing(self, file: Path) -> bool:
         # File doesn't exist
@@ -138,21 +144,15 @@ class Chroma:
 
         output = []
         for _, dist, meta, doc in self._records(query_result):
-            p  = meta['path']
+            rp = meta['relative_path']
             vp = meta['vault_path']
-            assert isinstance(p, str) and isinstance(vp, str)
-
-            # Store absolute paths, return relative paths
-            # TODO maybe just *store relative paths* since
-            # we also store the vault_path anyway
-            if p.startswith(vp):
-                p = str(Path(p).relative_to(vp))
+            assert isinstance(rp, str) and isinstance(vp, str)
 
             output.append(SearchResult(
-                p,
+                rp,
                 round(1-dist,3),
                 '', #TODO extract this? will not always be available
-                doc[:100], # TODO return whole thing?
+                doc,
                 ))
 
         return output
