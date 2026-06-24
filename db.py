@@ -10,7 +10,7 @@ class Feeder:
     _started = False
     _start_lock = threading.Lock()
     
-    def __init__(self, idx: Indexer):
+    def __init__(self, idx: Indexer) -> None:
         self.idx = idx
         with Feeder._start_lock:
             if not Feeder._started:
@@ -18,16 +18,16 @@ class Feeder:
                 Feeder._started = True
 
     @staticmethod
-    def _worker(idx: Indexer):
+    def _worker(idx: Indexer) -> None:
         while True:
+            item = Feeder._Q.get()
             try:
-                item = Feeder._Q.get()
                 if idx.needs_indexing(item.vault_path / item.relative_path):
                     idx.upsert_file(item.vault_path, item.relative_path)
             except Exception:
                 log.exception(f"Error indexing {item.relative_path}")
 
-    def enqueue(self, item:WorkItem):
+    def enqueue(self, item:WorkItem) -> None:
         Feeder._Q.put(item)
 
 @dataclass

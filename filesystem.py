@@ -9,7 +9,7 @@ log = logging.getLogger(__name__)
 
 class Watcher:
 
-    def __init__(self, cfg: Config, idx: Indexer):
+    def __init__(self, cfg: Config, idx: Indexer) -> None:
         self.cfg = cfg
         self.vault_path = cfg.vault_path
 
@@ -29,12 +29,12 @@ class Watcher:
             for path in paths:
                 self._handle_change(path)
 
-    def _handle_change(self, path: str) -> None:
-        if not fnmatch(path, self.cfg.file_match_glob):
-            log.debug(f"Ignoring {path}")
+    def _handle_change(self, path_str: str) -> None:
+        if not fnmatch(path_str, self.cfg.file_match_glob):
+            log.debug(f"Ignoring {path_str}")
             return
 
-        path = Path(path)
+        path = Path(path_str)
         if not path.exists():
             log.info(f"Deleting from disk: {path}")
             try:
@@ -50,11 +50,11 @@ class Watcher:
             log.info(f"Modified/new on disk: {relative_path}")
             self.feed.enqueue(WorkItem(self.vault_path, relative_path))
 
-    def start(self):
+    def start(self) -> None:
         t = threading.Thread(target=self._watch, daemon=True)
         t.start()
 
-def full_update(cfg:Config, idx: Indexer):
+def full_update(cfg:Config, idx: Indexer) -> None:
     log.info(f"Starting full refresh for {cfg.vault_path}")
     # Be nice while doing long-running work
     p = psutil.Process()
@@ -62,16 +62,9 @@ def full_update(cfg:Config, idx: Indexer):
 
     files = cfg.vault_path.rglob(cfg.file_match_glob)
     # exclude hidden files, or files in hidden dirs
-    files = list(files)
-    f = files[0]
-    print(f)
-    print(f.relative_to(cfg.vault_path))
-    
     relative_paths = [f.relative_to(cfg.vault_path) for f in files]
-    print(relative_paths[0])
     relative_paths = [f for f in relative_paths if not any(
                       part.startswith('.') for part in f.parts)]
-    print(len(relative_paths))
 
     feed = Feeder(idx)
     for relative_path in relative_paths:

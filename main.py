@@ -7,7 +7,7 @@ from filesystem import Watcher, full_update
 
 log = logging.getLogger(__name__)
 
-def daemon(cfg: Config, args):
+def daemon(cfg: Config, args: argparse.Namespace) -> None:
     c = Chroma(cfg)
 
     if args.dangerously_wipe_db:
@@ -27,12 +27,12 @@ def daemon(cfg: Config, args):
         # Wait forever, let threads work
         time.sleep(1)
 
-def start_watcher(cfg: Config, idx: Indexer):
+def start_watcher(cfg: Config, idx: Indexer) -> None:
     w = Watcher(cfg, idx)
     w.start()
 
 
-def main(args):
+def main(args: argparse.Namespace) -> None:
     try:
         cfg = Config()
     except ConfigCreated as e:

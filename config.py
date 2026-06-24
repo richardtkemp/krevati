@@ -31,7 +31,7 @@ class Config:
     overlap         : int
     API_KEY         : str
 
-    def __init__(self, path: Path | None = None):
+    def __init__(self, path: Path | None = None) -> None:
         path = path or _config_path()
         if not path.exists():
             self._write_template(path)

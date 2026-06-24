@@ -11,10 +11,10 @@ class Model:
     # Once loaded, preserve model across instantiations with a class variable
     model = None
 
-    def __init__(self, model_string):
+    def __init__(self, model_string: str) -> None:
         self.model_string = model_string
 
-    def embed(self, chunks):
+    def embed(self, chunks: list[str]):
         if not Model.model:
             Model.model = TextEmbedding(self.model_string)
         return Model.model.embed(chunks)
@@ -129,13 +129,13 @@ class Chroma:
 
         return is_stale(file, size, stored_ver, self._schema_version, stored_chunking, str(self._chunking), stored_mtime, mtime)
 
-    def _records(self, qr):
-        ids = qr['ids'][0]
-        di  = qr['distances'][0]
-        me  = qr['metadatas'][0]
-        do  = qr['documents'][0]
+    def _records(self, qr: chromadb.QueryResult) -> zip:
+        ids = qr['ids']
+        di  = qr['distances']
+        me  = qr['metadatas']
+        do  = qr['documents']
         assert ids is not None and di is not None and me is not None and do is not None
-        return zip(ids, di, me, do)
+        return zip(ids[0], di[0], me[0], do[0])
 
     def search(self, term: str, n_results: int = 5) -> list[SearchResult]:
         log.info(f"Searching for {term}")
@@ -158,5 +158,5 @@ class Chroma:
         return output
     
     
-    def count(self):
+    def count(self) -> int:
         return self.collection.count()

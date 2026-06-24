@@ -26,13 +26,13 @@ overlap = 150
 """
 
 
-def _write(tmp_path, body: str) -> Path:
+def _write(tmp_path: Path, body: str) -> Path:
     p = tmp_path / "config.toml"
     p.write_text(body)
     return p
 
 
-def test_loads_values_from_toml(tmp_path, monkeypatch):
+def test_loads_values_from_toml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KREVATI_API_KEY", "k")
     cfg = Config(path=_write(tmp_path, FULL))
     assert cfg.port == 5000
@@ -42,7 +42,7 @@ def test_loads_values_from_toml(tmp_path, monkeypatch):
     assert isinstance(cfg.vault_path, Path)
 
 
-def test_copies_example_config_and_signals_when_file_missing(tmp_path):
+def test_copies_example_config_and_signals_when_file_missing(tmp_path: Path) -> None:
     # Parent dir also absent, to confirm it gets created.
     path = tmp_path / "krevati" / "config.toml"
     with pytest.raises(ConfigCreated):
@@ -53,33 +53,33 @@ def test_copies_example_config_and_signals_when_file_missing(tmp_path):
     assert path.read_text() == _EXAMPLE_PATH.read_text()
 
 
-def test_shipped_example_satisfies_the_schema(tmp_path, monkeypatch):
+def test_shipped_example_satisfies_the_schema(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # The example must define every required key, or the copy-on-first-run
     # flow would hand the user a config that fails to load.
     monkeypatch.setenv("KREVATI_API_KEY", "k")
     Config(path=_EXAMPLE_PATH)
 
 
-def test_raises_when_a_required_key_is_missing(tmp_path, monkeypatch):
+def test_raises_when_a_required_key_is_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KREVATI_API_KEY", "k")
     body = FULL.replace("port = 5000\n", "")
     with pytest.raises(ValueError, match="port"):
         Config(path=_write(tmp_path, body))
 
 
-def test_raises_when_api_key_unset(tmp_path, monkeypatch):
+def test_raises_when_api_key_unset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("KREVATI_API_KEY", raising=False)
     with pytest.raises(ValueError, match="KREVATI_API_KEY"):
         Config(path=_write(tmp_path, FULL))
 
 
-def test_api_key_read_from_file_when_env_unset(tmp_path, monkeypatch):
+def test_api_key_read_from_file_when_env_unset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("KREVATI_API_KEY", raising=False)
     cfg = Config(path=_write(tmp_path, FULL + 'api_key = "from-file"\n'))
     assert cfg.API_KEY == "from-file"
 
 
-def test_env_api_key_overrides_file(tmp_path, monkeypatch):
+def test_env_api_key_overrides_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KREVATI_API_KEY", "from-env")
     cfg = Config(path=_write(tmp_path, FULL + 'api_key = "from-file"\n'))
     assert cfg.API_KEY == "from-env"

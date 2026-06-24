@@ -2,20 +2,20 @@ import socket, os, threading, json
 from flask      import Flask, request
 from config     import Config
 from dataclasses import asdict
-from db         import Searcher
+from db         import Searcher, SearchResult
 
 class Webserver:
-    def start(self):
+    def start(self) -> None:
         t = threading.Thread(target=self._serve, daemon=True)
         t.start()
 
-    def __init__(self, cfg: Config, s: Searcher):
+    def __init__(self, cfg: Config, s: Searcher) -> None:
         self.cfg = cfg
         self.s = s
         self.app = Flask(__name__)
     
         @self.app.before_request
-        def require_auth():
+        def require_auth() -> tuple | None:
             if request.remote_addr in ('127.0.0.1', '::1'):
                 return # local, no auth needed
             token = request.headers.get('Authorization', '')
@@ -23,7 +23,7 @@ class Webserver:
                 return 'Unauthorized', 401
         
         @self.app.route('/search', methods=["POST"])
-        def search():
+        def search() -> tuple:
             data = request.get_json(silent=True) or {}
             query = data.get('query', '')
             limit = data.get('limit', 5)
@@ -33,21 +33,21 @@ class Webserver:
             if query == '':
                 return '{"error": "query param must be set in request body"}', 400
             
-            return json.dumps([asdict(j) for j in self.s.search(query, n_results=limit)])
+            return json.dumps([asdict(j) for j in self.s.search(query, n_results=limit)]), 200
     
-    def _serve(self):
+    def _serve(self) -> None:
         self.app.run(host=self.cfg.host, port=self.cfg.port)
     
 class Socketserver:
-    def start(self):
+    def start(self) -> None:
         t = threading.Thread(target=self._serve, daemon=True)
         t.start()
 
-    def __init__(self, cfg: Config, s: Searcher):
+    def __init__(self, cfg: Config, s: Searcher) -> None:
         self.cfg = cfg
         self.s = s
 
-    def _serve(self):
+    def _serve(self) -> None:
         # Delete socket if it exists
         if os.path.exists(self.cfg.socket_path):
             os.unlink(self.cfg.socket_path)
@@ -57,13 +57,14 @@ class Socketserver:
             while True:
                 conn, _ = sock.accept()
                 query = conn.recv(1024).decode()
-                conn.sendall(self.pretty_print(self.s.search(query)).encode())
+                results = self.s.search(query)
+                conn.sendall(self.pretty_print(results).encode())
                 conn.shutdown(socket.SHUT_WR)
                 conn.close()
     
-    def pretty_print(self, result) -> str:
+    def pretty_print(self, results: list[SearchResult]) -> str:
         output = []
-        for r in result:
+        for r in results:
             output.append(f"\n%%%% SCORE {r.score:.3f} %%%%\n%%%% PATH {r.path} %%%%\n%%%% HEADER {r.header} %%%%")
             output.append(r.snippet[:200])
 
