@@ -51,21 +51,17 @@ def enqueued(monkeypatch: pytest.MonkeyPatch) -> list[WorkItem]:
     return items
 
 
-@pytest.fixture
-def no_ionice(monkeypatch: pytest.MonkeyPatch) -> None:
-    # full_update sets I/O priority via psutil; stub it out for hermeticity.
-    class DummyProc:
-        def ionice(self, *a: object, **k: object) -> None: pass
-    monkeypatch.setattr(filesystem.psutil, 'Process', lambda: DummyProc())
-
-
-def cfg_for(tmp_path: Path) -> Config:
-    return cast(Config, SimpleNamespace(vault_path=tmp_path, file_match_glob='*.md'))
+def cfg_for(tmp_path: Path, exclude_dirs: list[str] | None = None) -> Config:
+    return cast(Config, SimpleNamespace(
+        vault_path=tmp_path,
+        file_match_glob='*.md',
+        exclude_dirs=exclude_dirs or [],
+    ))
 
 
 # ── full_update: discovers matching files and enqueues one WorkItem each ──────
 
-def test_enqueues_matching_files_recursively(tmp_path: Path, no_ionice: None, enqueued: list[WorkItem]) -> None:
+def test_enqueues_matching_files_recursively(tmp_path: Path, enqueued: list[WorkItem]) -> None:
     (tmp_path / 'a.md').write_text('x')
     (tmp_path / 'sub').mkdir()
     (tmp_path / 'sub' / 'b.md').write_text('x')
@@ -78,7 +74,7 @@ def test_enqueues_matching_files_recursively(tmp_path: Path, no_ionice: None, en
     assert all(i.vault_path == tmp_path for i in enqueued)
 
 
-def test_skips_hidden_files_and_hidden_directories(tmp_path: Path, no_ionice: None, enqueued: list[WorkItem]) -> None:
+def test_skips_hidden_files_and_hidden_directories(tmp_path: Path, enqueued: list[WorkItem]) -> None:
     (tmp_path / 'visible.md').write_text('x')
     (tmp_path / '.secret.md').write_text('x')
     (tmp_path / '.hidden').mkdir()
@@ -87,6 +83,43 @@ def test_skips_hidden_files_and_hidden_directories(tmp_path: Path, no_ionice: No
     full_update(cfg_for(tmp_path), FakeIndexer())
 
     assert sorted(i.relative_path.name for i in enqueued) == ['visible.md']
+
+
+def test_excludes_directories_by_bare_name(tmp_path: Path, enqueued: list[WorkItem]) -> None:
+    (tmp_path / 'keep.md').write_text('x')
+    (tmp_path / 'node_modules').mkdir()
+    (tmp_path / 'node_modules' / 'dep.md').write_text('x')
+
+    full_update(cfg_for(tmp_path, exclude_dirs=['node_modules']), FakeIndexer())
+
+    assert sorted(i.relative_path.name for i in enqueued) == ['keep.md']
+
+
+def test_excludes_an_absolute_subtree(tmp_path: Path, enqueued: list[WorkItem]) -> None:
+    (tmp_path / 'keep.md').write_text('x')
+    (tmp_path / 'archive').mkdir()
+    (tmp_path / 'archive' / 'old.md').write_text('x')
+
+    excluded = str(tmp_path / 'archive')   # an absolute path, not a bare name
+    full_update(cfg_for(tmp_path, exclude_dirs=[excluded]), FakeIndexer())
+
+    assert sorted(i.relative_path.name for i in enqueued) == ['keep.md']
+
+
+def test_absolute_exclude_matches_through_a_symlinked_vault(
+        tmp_path: Path, enqueued: list[WorkItem]) -> None:
+    # vault is reached via a symlink, but the exclude is given as the real path.
+    # Without resolving, the prefixes wouldn't match; the .resolve() makes it work.
+    real = tmp_path / 'real'
+    (real / 'archive').mkdir(parents=True)
+    (real / 'keep.md').write_text('x')
+    (real / 'archive' / 'old.md').write_text('x')
+    vault = tmp_path / 'vault'
+    vault.symlink_to(real)
+
+    full_update(cfg_for(vault, exclude_dirs=[str(real / 'archive')]), FakeIndexer())
+
+    assert sorted(i.relative_path.name for i in enqueued) == ['keep.md']
 
 
 # ── Watcher._handle_change: routes a single filesystem event ──────────────────
@@ -125,6 +158,18 @@ def test_handle_change_ignores_non_md_files(tmp_path: Path, enqueued: list[WorkI
 
     assert enqueued == []
     assert idx.deleted == []
+
+
+def test_handle_change_ignores_files_in_excluded_dirs(tmp_path: Path, enqueued: list[WorkItem]) -> None:
+    d = tmp_path / 'node_modules'
+    d.mkdir()
+    f = d / 'dep.md'
+    f.write_text('x')
+    w = Watcher(cfg_for(tmp_path, exclude_dirs=['node_modules']), FakeIndexer())
+
+    w._handle_change(str(f))
+
+    assert enqueued == []
 
 
 def test_handle_change_deletes_a_missing_md_file(tmp_path: Path, enqueued: list[WorkItem]) -> None:

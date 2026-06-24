@@ -19,6 +19,7 @@ class ConfigCreated(Exception):
 class Config:
     vault_name      : str
     vault_path      : Path
+    exclude_dirs    : list[str]
     cache_dir       : Path
     file_match_glob : str
     socket_path     : str

@@ -62,8 +62,6 @@ if __name__ == '__main__':
 
 
 
-# NB useful collection functions
-# add delete count get modify/update/upsert query 
 # done!
 # persistent file-watching daemon
 # file type filter

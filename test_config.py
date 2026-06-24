@@ -15,6 +15,7 @@ vault_name = "vault"
 vault_path = "/data/notes"
 cache_dir = "/data/cache"
 file_match_glob = "*.md"
+exclude_dirs = []
 socket_path = "/tmp/krevati.sock"
 server_enabled = true
 socket_enabled = true

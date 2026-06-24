@@ -6,6 +6,11 @@ vault_path      = "/home/user/vault"
 cache_dir       = "/home/user/.cache"
 file_match_glob = "*.md"
 
+# Directories to skip while indexing. A bare name (no '/') matches that segment
+# anywhere in the tree; a path with a '/' is a subtree (absolute, or relative to
+# vault_path). Use [] for none.
+exclude_dirs    = [".git", "node_modules"]
+
 socket_path     = "/tmp/krevati.sock"
 server_enabled  = true
 socket_enabled  = true

@@ -1,4 +1,4 @@
-import logging, threading, psutil
+import logging, threading
 from watchfiles import watch
 from pathlib import Path
 from fnmatch import fnmatch
@@ -6,6 +6,32 @@ from config import Config
 from db import Indexer, Feeder, WorkItem
 
 log = logging.getLogger(__name__)
+
+
+class PathFilter:
+    """Decides whether a vault file should be skipped while indexing.
+
+    Hidden files and files under hidden dirs are always excluded. Beyond that,
+    a bare name in cfg.exclude_dirs (no '/') matches a path segment anywhere; an
+    entry with a '/' is a directory subtree (absolute, or relative to the vault),
+    resolved so the check still holds through symlinks and '..'.
+
+    Built once and queried per file, so the name set / resolved subtrees are
+    computed a single time.
+    """
+
+    def __init__(self, cfg: Config) -> None:
+        self.vault_path = cfg.vault_path
+        self.names = {e for e in cfg.exclude_dirs if '/' not in e}
+        self.trees = [(cfg.vault_path / e).resolve() for e in cfg.exclude_dirs if '/' in e]
+
+    def excludes(self, path: Path) -> bool:
+        rel = path.relative_to(self.vault_path)
+        if any(part.startswith('.') or part in self.names for part in rel.parts):
+            return True
+        # resolve only when there are subtrees to compare against
+        return any(path.resolve().is_relative_to(t) for t in self.trees)
+
 
 class Watcher:
 
@@ -18,6 +44,7 @@ class Watcher:
         self.delete = idx.delete_file
 
         self.feed = Feeder(idx)
+        self.pathfilter = PathFilter(cfg)
         logging.getLogger('watchfiles').setLevel(logging.WARNING)
 
     def _watch(self) -> None:
@@ -35,6 +62,10 @@ class Watcher:
             return
 
         path = Path(path_str)
+        if self.pathfilter.excludes(path):
+            log.debug(f"Ignoring excluded {path}")
+            return
+
         if not path.exists():
             log.info(f"Deleting from disk: {path}")
             try:
@@ -56,22 +87,12 @@ class Watcher:
 
 def full_update(cfg:Config, idx: Indexer) -> None:
     log.info(f"Starting full refresh for {cfg.vault_path}")
-    # Be nice while doing long-running work
-    p = psutil.Process()
-    p.ionice(psutil.IOPRIO_CLASS_IDLE)
 
-    files = cfg.vault_path.rglob(cfg.file_match_glob)
-    # exclude hidden files, or files in hidden dirs
-    relative_paths = [f.relative_to(cfg.vault_path) for f in files]
-    relative_paths = [f for f in relative_paths if not any(
-                      part.startswith('.') for part in f.parts)]
-
+    pathfilter = PathFilter(cfg)
     feed = Feeder(idx)
-    for relative_path in relative_paths:
+    for f in cfg.vault_path.rglob(cfg.file_match_glob):
+        if pathfilter.excludes(f):
+            continue
+        relative_path = f.relative_to(cfg.vault_path)
         log.debug(f"Queueing {relative_path}")
         feed.enqueue(WorkItem(cfg.vault_path, relative_path))
-
-    # Be responsive when watching and serving queries
-    p.ionice(psutil.IOPRIO_CLASS_BE)
-    # probably need to use a condition to manage ionice TODO
-
