@@ -11,16 +11,18 @@ class Model:
     # Once loaded, preserve model across instantiations with a class variable
     model = None
 
-    def __init__(self, model_string: str, threads: int) -> None:
+    def __init__(self, model_string: str, threads: int, cache_dir: Path | None = None) -> None:
         self.model_string = model_string
+        self.cache_dir = str(cache_dir) if cache_dir else None
         # 0 means "auto": all usable cores but one, at least one. Otherwise use as
         # given. process_cpu_count() respects CPU affinity (taskset/cpuset).
         self.threads = threads or max(1, (os.process_cpu_count() or 1) - 1)
 
     def embed(self, chunks: list[str]):
         if not Model.model:
-            # threads caps ONNX Runtime's intra-op thread pool
-            Model.model = TextEmbedding(self.model_string, threads=self.threads)
+            # threads caps ONNX Runtime's intra-op thread pool; cache_dir is the
+            # shared on-disk model store (default /var/tmp/fastembed_cache)
+            Model.model = TextEmbedding(self.model_string, cache_dir=self.cache_dir, threads=self.threads)
         return Model.model.embed(chunks)
  
 class Chroma:
@@ -41,7 +43,7 @@ class Chroma:
         self.client = chromadb.PersistentClient(path=str(cache_dir))
         self.collection = self.client.get_or_create_collection(cfg.vault_name)
 
-        self.model = Model(cfg.model_string, cfg.model_threads)
+        self.model = Model(cfg.model_string, cfg.model_threads, cfg.model_cache_dir)
     
     # TODO how to handle wiping when multiple dirs are indexed?
     def dangerously_wipe_db(self) -> None:
@@ -71,10 +73,12 @@ class Chroma:
         chunkids = range(new_count)
         vectors = [v.tolist() for v in self.model.embed(chunks)] # batch all chunks in one call
     
-        # does it already exist?
+        # does it already exist? (metadata stores vault_path, not full_path — the
+        # old {'full_path': ...} filter never matched, so surplus chunks from a
+        # shrunk file were never cleaned up)
         old = self.collection.get(where={'$and': [
             {'relative_path':   {'$eq': str(relative_path)}},
-            {'full_path':       {'$eq': str(full_path)}}]},
+            {'vault_path':      {'$eq': str(vault_path)}}]},
             include=['metadatas'])
         old_count = len(old['ids'])
 
@@ -114,11 +118,14 @@ class Chroma:
             log.debug(f"Not indexing empty file {file}")
             return False
 
+        # Chunks are stored under ids "{full_path}::{chunk_index}" with metadata
+        # keyed by relative_path/vault_path — there is NO "path" field, so the
+        # old where={"path": ...} filter never matched and every file was treated
+        # as unindexed and re-embedded on every run. Look up the first chunk by id.
         results = self.collection.get(
-                where={"path": {"$eq": str(file)}},
-                include=["metadatas"],
-                limit=1)
-    
+                ids=[f"{str(file)}::0"],
+                include=["metadatas"])
+
         # File not yet indexed
         if not results['ids']:
             return True

@@ -31,6 +31,7 @@ class Config:
     model_context   : int
     model_threads   : int
     overlap         : int
+    model_cache_dir : Path
     API_KEY         : str
 
     def __init__(self, path: Path | None = None) -> None:
@@ -42,8 +43,10 @@ class Config:
             data = tomllib.load(f)
 
         hints = type(self).__annotations__
-        # API_KEY is resolved separately so the environment can override the file.
-        required = [k for k in hints if k != 'API_KEY']
+        # API_KEY and model_cache_dir resolve separately (env override / generic
+        # shared default), so neither is required to appear in the file.
+        _optional = ('API_KEY', 'model_cache_dir')
+        required = [k for k in hints if k not in _optional]
         missing = [k for k in required if k not in data]
         if missing:
             raise ValueError(f"Config file {path} is missing keys: {', '.join(missing)}")
@@ -51,6 +54,11 @@ class Config:
         for key in required:
             value = data[key]
             setattr(self, key, Path(value) if hints[key] is Path else value)
+
+        # Shared on-disk cache for the embedding model (~130MB). Generic default
+        # so every agent/user reuses one copy; /var/tmp persists across reboots
+        # (unlike /tmp). Override per-agent with model_cache_dir in the config.
+        self.model_cache_dir = Path(data.get('model_cache_dir') or '/var/tmp/fastembed_cache')
 
         self.API_KEY = os.environ.get('KREVATI_API_KEY') or data.get('api_key', '')
         if not self.API_KEY:

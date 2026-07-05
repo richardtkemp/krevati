@@ -85,3 +85,17 @@ def test_env_api_key_overrides_file(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("KREVATI_API_KEY", "from-env")
     cfg = Config(path=_write(tmp_path, FULL + 'api_key = "from-file"\n'))
     assert cfg.API_KEY == "from-env"
+
+
+def test_model_cache_dir_defaults_to_shared_var_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Absent from FULL — the generic shared default must apply so agents don't
+    # each download their own copy of the model.
+    monkeypatch.setenv("KREVATI_API_KEY", "k")
+    cfg = Config(path=_write(tmp_path, FULL))
+    assert cfg.model_cache_dir == Path("/var/tmp/fastembed_cache")
+
+
+def test_model_cache_dir_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KREVATI_API_KEY", "k")
+    cfg = Config(path=_write(tmp_path, FULL + 'model_cache_dir = "/custom/models"\n'))
+    assert cfg.model_cache_dir == Path("/custom/models")

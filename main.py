@@ -1,9 +1,11 @@
-import logging, time, argparse, client
-from chroma     import Chroma
-from db         import Indexer
-from config     import Config, ConfigCreated
-from server     import Webserver, Socketserver
-from filesystem import Watcher, full_update
+import logging, time, argparse
+from pathlib     import Path
+from chroma      import Chroma
+from db          import Indexer
+from config      import Config, ConfigCreated
+from server      import Webserver, Socketserver
+from filesystem  import Watcher, full_update, sync_update
+from misc        import upsearch_collection_name
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +34,31 @@ def start_watcher(cfg: Config, idx: Indexer) -> None:
     w.start()
 
 
+def run_upsearch(cfg: Config, directory: Path, query: str | None, limit: int) -> str:
+    """One-shot: (re)index a directory into its own isolated collection, then
+    optionally search within it. Obeys the config for model/chunking/cache/glob,
+    but retargets the vault to `directory` (NOT limited to the configured vault
+    path). No daemon, no watcher — runs and exits."""
+    directory = directory.resolve()
+    if not directory.is_dir():
+        return f"upsearch: not a directory: {directory}"
+
+    cfg.vault_path = directory
+    cfg.vault_name = upsearch_collection_name(directory)
+
+    c = Chroma(cfg)
+    n = sync_update(cfg, c)
+
+    if not query:
+        return f"Indexed {directory}: {n} file(s) (re)embedded, {c.count()} chunks total."
+
+    results = c.search(query, n_results=limit)
+    lines = [f"upsearch {directory} — {n} file(s) (re)embedded, {len(results)} match(es):"]
+    for r in results:
+        lines.append(f"\n[{r.score:.3f}] {r.path}\n{r.snippet[:300].strip()}")
+    return "\n".join(lines)
+
+
 def main(args: argparse.Namespace) -> None:
     try:
         cfg = Config()
@@ -40,8 +67,13 @@ def main(args: argparse.Namespace) -> None:
                     f"Edit the values and run again.")
         return
 
+    if args.upsearch:
+        print(run_upsearch(cfg, Path(args.upsearch), args.search, args.limit))
+        return
+
     if args.search:
-        print(client.search_daemon_send(cfg, args.search))
+        import client  # lazy: only the daemon-search path needs the socket client,
+        print(client.search_daemon_send(cfg, args.search))  # so upsearch stays usable independently
         return
 
     daemon(cfg, args)
@@ -53,6 +85,11 @@ if __name__ == '__main__':
                         help='Delete all indexed data before re-indexing')
     parser.add_argument('--verbose', action='store_true', help='Log verbosely')
     parser.add_argument('--search', help='Search term')
+    parser.add_argument('--upsearch', metavar='DIR',
+                        help='One-shot mode: upsert (changed) files under DIR into '
+                             'its own isolated index, then --search within it. No daemon.')
+    parser.add_argument('--limit', type=int, default=5,
+                        help='Max search results (default 5)')
     args = parser.parse_args()
 
     level = logging.DEBUG if args.verbose else logging.INFO

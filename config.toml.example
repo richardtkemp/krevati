@@ -23,6 +23,11 @@ model_context   = 512   # max tokens per embedding request
 model_threads   = 0     # cap on ONNX Runtime threads; 0 = auto (all cores but one)
 overlap         = 150   # character overlap between adjacent chunks
 
+# Optional. Shared on-disk cache for the embedding model (~130MB). Defaults to
+# /var/tmp/fastembed_cache so every agent/user shares one copy (persists across
+# reboots, unlike /tmp). Uncomment to override.
+# model_cache_dir = "/var/tmp/fastembed_cache"
+
 # API key for non-local HTTP requests. The KREVATI_API_KEY environment
 # variable overrides this when set. Uncomment and set to allow the file
 # to supply it instead.

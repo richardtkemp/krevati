@@ -96,3 +96,22 @@ def full_update(cfg:Config, idx: Indexer) -> None:
         relative_path = f.relative_to(cfg.vault_path)
         log.debug(f"Queueing {relative_path}")
         feed.enqueue(WorkItem(cfg.vault_path, relative_path))
+
+
+def sync_update(cfg: Config, idx: Indexer) -> int:
+    """One-shot SYNCHRONOUS index of cfg.vault_path — no Feeder threads, no
+    watcher. Blocks until every changed file is embedded, then returns the count
+    (re)indexed. This is the indexing half of the 'upsearch' one-shot mode: we
+    must finish before searching, and must not leave a background worker or the
+    embedding model resident (krevati is memory-heavy to keep persistent)."""
+    pathfilter = PathFilter(cfg)
+    indexed = 0
+    for f in cfg.vault_path.rglob(cfg.file_match_glob):
+        if pathfilter.excludes(f):
+            continue
+        if idx.needs_indexing(f):
+            relative_path = f.relative_to(cfg.vault_path)
+            log.info(f"Indexing {relative_path}")
+            idx.upsert_file(cfg.vault_path, relative_path)
+            indexed += 1
+    return indexed
